@@ -25,6 +25,7 @@ def sparse_to_tuple(sparse_mx: sp.coo_matrix) -> Tuple[np.array, np.array,
         shape = mx.shape
         return coords, values, shape
 
+    # lil matrix를 tuple 형태로 변환한다.
     if isinstance(sparse_mx, list):
         for i in range(len(sparse_mx)):
             sparse_mx[i] = to_tuple(sparse_mx[i])
@@ -78,13 +79,15 @@ def preprocess_feature(features: np.array, to_tuple: bool = True) -> \
     :param features: the node feature matrix
     :param to_tuple: whether cast the feature matrix to scipy sparse tuple
     """
+    # Feature를 row-normalize 하는 함수이다.
     features = sp.lil_matrix(features)
     rowsum = np.array(features.sum(1))
     r_inv = np.power(rowsum, -1).flatten()
     r_inv[np.isinf(r_inv)] = 0.
     r_mat_inv = sp.diags(r_inv)
-    features = r_mat_inv.dot(features)
 
+    # 이때 생성되는 features는 lil_matrix 형태이다.
+    features = r_mat_inv.dot(features)
     if to_tuple:
         return sparse_to_tuple(features)
     else:
