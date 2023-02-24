@@ -78,11 +78,13 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
             labels = all_labels[mini_batch_nodes]
             ix += batch_size
             yield (batch, labels)
-        mini_batch_nodes = nodes_for_epoch[ix:-1]
-        batch = build_batch(mini_batch_nodes, neigh_dicts,
-                            args.sample_sizes, features)
-        labels = all_labels[mini_batch_nodes]
-        yield (batch, labels)
+        
+        """남는 배치는 사용하지 않도록 한다."""
+        # mini_batch_nodes = nodes_for_epoch[ix:-1]
+        # batch = build_batch(mini_batch_nodes, neigh_dicts,
+        #                     args.sample_sizes, features)
+        # labels = all_labels[mini_batch_nodes]
+        # yield (batch, labels)
 
     # train/val/test 노드의 인덱스를 정의한다.
     train_nodes = masks[0]

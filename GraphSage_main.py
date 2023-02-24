@@ -74,10 +74,12 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
             labels = all_labels[mini_batch_nodes]
             ix += batch_size
             yield (batch, labels)
-        mini_batch_nodes = nodes_for_epoch[ix:-1]
-        batch = build_batch(mini_batch_nodes, neigh_dict, args.sample_sizes)
-        labels = all_labels[mini_batch_nodes]
-        yield (batch, labels)
+        
+        """남는 배치는 사용하지 않도록 한다."""
+        # mini_batch_nodes = nodes_for_epoch[ix:-1]
+        # batch = build_batch(mini_batch_nodes, neigh_dict, args.sample_sizes)
+        # labels = all_labels[mini_batch_nodes]
+        # yield (batch, labels)
 
     # train/val/test 노드의 인덱스를 정의한다.
     train_nodes = masks[0]
@@ -223,7 +225,7 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size, max_node_id):
     
     # 배치를 구성하는 노드를 기준으로 전체 노드 중 샘플링되지 않는 이웃 노드들에 대한 마스크를 생성한다.
     # nonzero_cols_mask는 전체 노드 중 샘플링되는 이웃 노드만을 가리키는 마스크로 사용된다.
-    nonzero_cols_mask = np.any(adj_mat_full.astype(np.bool), axis=0)
+    nonzero_cols_mask = np.any(adj_mat_full.astype(bool), axis=0)
 
     # compute diffusion matrix
     # 배치에서 참조되지 않는 이웃 노드들을 adj_mat_full에서 제거하여 adj_mat로 정의한다.
