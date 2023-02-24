@@ -57,10 +57,10 @@ class GraphConsis(keras.Model):
             # ConsisMeanAggregator를 통해 aggregator_layer를 생성한다. 
             aggregator_layer = ConsisMeanAggregator(input_dim, internal_dim,
                                                     name=layer_name)
-            # sequential 컨테이너에 aggregator_lager를 쌓는다.
+            # sequential 컨테이너에 aggregator_layer를 쌓는다.
             self.seq_layers.append(aggregator_layer)
 
-        # keras dense가 mlp와 동일한지 확인
+        # MLP로 fraud score 계산하도록 classifier를 생성한다.
         self.classifier = tf.keras.layers.Dense(num_classes,
                                                 activation=tf.nn.softmax,
                                                 use_bias=False,

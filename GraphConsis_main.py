@@ -67,7 +67,12 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
         while len(nodes_for_epoch) > ix + batch_size:
             # 순차적으로 노드 할당
             mini_batch_nodes = nodes_for_epoch[ix:ix + batch_size]
-            # 배치를 구성하는데
+            # 배치를 구성한다.
+            # 이때, 배치는 네 개의 배열이 담긴 튜플로 반환된다.
+            # src_nodes: 배치를 구성하는 노드들과 그 이웃 노드들의 인덱스가 담긴 배열
+            # dstsrc2srcs: dstsrc에서 이웃 노드의 위치를 가리키는 인덱스 배열
+            # dstsrc2dsts: dstsrc에서 배치 노드의 위치를 가리키는 인덱스 배열
+            # dif_mats: mean aggragator 역할을 하는 행렬 (row-normalized) 
             batch = build_batch(mini_batch_nodes, neigh_dicts,
                                 args.sample_sizes, features)
             labels = all_labels[mini_batch_nodes]
@@ -98,8 +103,8 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
                                                           args.batch_size,
                                                           features)
         # iteration을 계산한다.
-        iters = len(train_nodes) / args.batch_size
-        for inputs, inputs_labels in tqdm(minibatch_generator, total=int(iters)):
+        iters = int(len(train_nodes) / args.batch_size)
+        for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
             # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
             with tf.GradientTape() as tape:
                 # 최종적으로 생성된 배치 노드에 대한 fraud score를 predicted로 정의한다.
@@ -167,14 +172,19 @@ def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,
         # 추후 compute_diffusion_matrix 함수를 이용할 때 해당 리스트를 참조한다. (dst_nodes=[0-th layer, 1-th layer, ...], -1 인덱스로 참조해나감.)
         dst_nodes = [nodes] 
         # 배치를 구성하는 노드의 인덱스를 dst_nodes로 정의한다. 
-        dstsrc2dsts = [] # dst_nodes의 특정 레이어에서 배치 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
-        dstsrc2srcs = [] # dst_nodes의 특정 레이어에서 이웃 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
+        dstsrc2dsts = [] # 특정 레이어에서 dst_nodes의 배치 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
+        dstsrc2srcs = [] # 특정 레이어에서 dst_nodes의 이웃 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
         dif_mats = [] # 특정 레이어에서 배치 노드의 mean aggregator의 역할을 하는 adjacency matrix를 담을 리스트를 정의한다.
 
-        # 전체 그래프에서 가장 큰 노드의 인덱스를 max_node_id로 정의한다. max_node_id가 dif_mat을 생성하는 과정에서 일시적으로 필요하다.
+        # 전체 그래프에서 가장 큰 노드의 인덱스를 max_node_id로 정의한다.
+        # 아눈 dif_mat(아래의 dm)을 생성하는 과정에서 일시적으로 필요하다.
         max_node_id = max(list(neigh_dict.keys()))
 
         for sample_size in reversed(sample_sizes): # 왜 굳이 거꾸로 루프를 돌리는지 ...
+            # dstsrc: 배치를 구성하는 노드들과 그 이웃 노드들의 인덱스가 담긴 배열
+            # dstsrc2src: dstsrc에서 이웃 노드의 위치를 가리키는 인덱스 배열
+            # dstsrc2dst: dstsrc에서 배치 노드의 위치를 가리키는 인덱스 배열
+            # dif_mat: mean aggragator 역할을 하는 행렬 (row-normalized) 
             ds, d2s, d2d, dm = compute_diffusion_matrix(dst_nodes[-1],
                                                         neigh_dict,
                                                         sample_size,
@@ -240,7 +250,7 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
     def vectorize(ns):
         # 전체 그래프의 노드 수에 대응하는 차원의 0벡터를 생성하고,
         v = np.zeros(max_node_id + 1, dtype=np.float32)
-        # 샘플링된 이웃 노드의 인덱스의 값을 1로 할당한다.
+        # 샘플링된 이웃 노드의 인덱스의 값만을 1로 할당한다.
         v[ns] = 1
         return v # numpy array (shape: |V|,) 
 
@@ -255,7 +265,7 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
     nonzero_cols_mask = np.any(adj_mat_full.astype(bool), axis=0) # Bool array
 
     # compute diffusion matrix
-    # 배치 전체에서 참조되지 않는 이웃 노드들을 adj_mat_full에서 제거하여 adj_mat로 정의한다.
+    # 배치에서 참조되지 않는 이웃 노드들을 adj_mat_full에서 제거하여 adj_mat로 정의한다.
     adj_mat = adj_mat_full[:, nonzero_cols_mask]
     adj_mat_sum = np.sum(adj_mat, axis=1, keepdims=True)
     # 이웃 노드에 대한 mean aggregator를 의미한다.
@@ -310,7 +320,7 @@ if __name__ == "__main__":
 
     neigh_dicts = []
     for net in adj_list: # adj_list에 존재하는 여러 타입의 엣지(CSC matrix format)를 차례로 불러와 이웃 노드들을 저장한다.
-        neigh_dict = {} # 각 타입의 엣지로 연결된 노드의 이웃들을 딕셔너리 형태로 저장한다. 
+        neigh_dict = {} # 각 타입의 엣지로 연결된 노드의 이웃들을 딕셔너리 형태로 저장할 수 있도록 한다. 
         for i in range(len(y)): 
             neigh_dict[i] = [] # 노드의 수만큼 빈 리스트를 생성하고, key값을 대응하여 append하는 방식을 이용한다. 
         nodes1 = net.nonzero()[0] # CSC_matrix.nonzero()는 nonzero의 row_arr, colum_arr을 반환한다.
