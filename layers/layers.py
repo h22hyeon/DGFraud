@@ -383,6 +383,8 @@ class SageMeanAggregator(layers.Layer):
         :param int dst_dim: output dimension
         """
         super().__init__(**kwargs)
+        # weight와 non-linear function
+        # 다른 클래스들이 SageMeanAggregator 클래스를 상속해서 사용하는 부분임.
         self.activ_fn = tf.nn.relu if activ else tf.identity
         self.w = self.add_weight(name=kwargs["name"] + "_weight",
                                  shape=(src_dim * 2, dst_dim),
@@ -401,11 +403,24 @@ class SageMeanAggregator(layers.Layer):
         :param tensor dif_mat: 2d diffusion matrix
                       (prepraed by minibatch generator)
         """
+        """
+        dstsrc_features: 배치를 구성하는 노드와 모든 이웃 노드의 피처로 구성된 행렬
+        dstsrc2src: dstsrc_features에서 이웃 노드들의 위치를 가리키는 인덱스 배열
+        dstsrc2dst: dstsrc_features에서 배치 노드들의 위치를 가리키는 인덱스 배열
+        dif_mat: 배치 노드들과 샘플링된 이웃 노드들의 연결 관계를 나타내는 행렬 (row-normalized) 
+        """
+        # 배치 노드에 대한 노드 피처를 dst_features로 정의한다.
         dst_features = tf.gather(dstsrc_features, dstsrc2dst)
+        # 배치 노드에 대한 이웃 노드의 피처를 src_features로 정의한다.
         src_features = tf.gather(dstsrc_features, dstsrc2src)
+        
+        # dif_mat(row-normalized)을 통해 이웃 노드들의 representation를 통합한다.
         aggregated_features = tf.matmul(dif_mat, src_features)
-        concatenated_features = tf.concat([aggregated_features, dst_features],
-                                          1)
+        
+        # 통합된 이웃 노드의 representation과 배치의 타겟 노드의 피처를 concatenation한다. 
+        concatenated_features = tf.concat([aggregated_features, dst_features], 1)
+        
+        # projection and non-linear function으로 representation을 생성한다.
         x = tf.matmul(concatenated_features, self.w)
         return self.activ_fn(x)
 
@@ -436,11 +451,29 @@ class ConsisMeanAggregator(SageMeanAggregator):
         :param tensor relation_vec: 1d corresponding relation vector
         :param tensor attention_vec: 1d layers shared attention weights vector
         """
+        """
         # Equation 5,6 in the paper
+        dstsrc2src: dstsrc_features에서 이웃 노드들의 위치를 가리키는 인덱스 배열
+        dstsrc2dst: dstsrc_features에서 배치 노드들의 위치를 가리키는 인덱스 배열
+        dif_mat: 배치 노드들과 샘플링된 이웃 노드들의 연결 관계를 나타내는 행렬 (row-normalized) 
+        relation_vec: Relation attention을 수행하기 위해 concatenate할 relation 벡터
+        attention_vec: Relation attention을 수행하기 위한 attentiontion weight 벡터
+        """
+        
+        # SageMeanAggregator의 mean aggregator를 call하여 배치의 각 노드에 대한 representation을 생성한다.
         x = super().__call__(dstsrc_features, dstsrc2src, dstsrc2dst, dif_mat)
+        # relation_vec를 배치 노드의 수만큼 열 방향으로 복제하여 relation_features로 정의한다.
         relation_features = tf.tile([relation_vec], [x.shape[0], 1])
+        # 확장된 relation_vector(relation_features)를 통합된 representation과 contenation 한다.
+        # attention_vec을 통해 해당 노드의 attention score 값을 alpha로 정의한다.  
         alpha = tf.matmul(tf.concat([x, relation_features], 1), attention_vec)
+        """
+        attention score를 반환하여 relation별로 softmax를 취하지 않음.
+        이 부분이 논문에서 설명한 것과 다르게 구현되어 있음. (필요시 수정 가능)
+        """
+        # alpha를 열 방향으로 x와 동일한 feature 크기로 확장한다. 
         alpha = tf.tile(alpha, [1, x.shape[-1]])
+        # 이를 x와 곱하여 노드의 representation을 생성한다.
         x = tf.multiply(alpha, x)
 
         return x

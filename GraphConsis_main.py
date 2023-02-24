@@ -85,6 +85,7 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
     test_nodes = masks[2]
 
     # training
+    """GraphConsis 모델과 옵티마이저 생성 및 손실함수 정의"""
     model = GraphConsis(features.shape[-1], args.nhid,
                         len(args.sample_sizes), num_classes, len(neigh_dicts))
     optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
@@ -96,40 +97,50 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
                                                           labels,
                                                           args.batch_size,
                                                           features)
-        batchs = len(train_nodes) / args.batch_size
-        for inputs, inputs_labels in tqdm(minibatch_generator, total=int(batchs)):
-
+        # iteration을 계산한다.
+        iters = len(train_nodes) / args.batch_size
+        for inputs, inputs_labels in tqdm(minibatch_generator, total=int(iters)):
+            # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
             with tf.GradientTape() as tape:
+                # 최종적으로 생성된 배치 노드에 대한 fraud score를 predicted로 정의한다.
                 predicted = model(inputs, features)
+                # predicted를 통해 cross-entropy loss를 계산한다.
                 loss = loss_fn(tf.convert_to_tensor(inputs_labels), predicted)
+                """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
                 acc = accuracy_score(inputs_labels,
                                      predicted.numpy().argmax(axis=1))
+            # 역전파 과정을 통해 gradient를 계산하고 optimizer를 통해 가중치를 업데이트 한다. 
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
             print(f" loss: {loss.numpy():.4f}, acc: {acc:.4f}")
 
-        # validation
+        # validation!!
         print("Validating...")
+        # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
         val_results = model(build_batch(val_nodes, neigh_dicts,
                                         args.sample_sizes, features), features)
+        # val_results를 통해 cross-entropy loss를 계산한다.
         loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
+        """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
         val_acc = accuracy_score(labels[val_nodes],
                                  val_results.numpy().argmax(axis=1))
         print(f" Epoch: {epoch:d}, "
               f"loss: {loss.numpy():.4f}, "
               f"acc: {val_acc:.4f}")
 
-    # testing
+    # testing!!
     print("Testing...")
+    # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
     results = model(build_batch(test_nodes, neigh_dicts,
                                 args.sample_sizes, features), features)
+    """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
     test_acc = accuracy_score(labels[test_nodes],
                               results.numpy().argmax(axis=1))
     print(f"Test acc: {test_acc:.4f}")
 
 
 def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,
-                features: np.array):
+                features: np.array): # 하나의 배치를 구성하기 위한 함수이다.
     """
     :param nodes: node ids
     :param neigh_dicts: BIDIRECTIONAL adjacency matrix in dict {node:[node]}
@@ -146,21 +157,24 @@ def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,
     """
     nodes: 배치를 구성하는 노드의 인덱스
     neigh_dicts: 각 타입의 엣지에 대응하는 adjacency list (list of dictionary)
-    sample_sizes: ??
+    sample_sizes: Neighbor sampling에서 샘플링할 노드의 수를 나타내는 배열 (numpy array)
     features: 전체 그래프에 대응하는 노드의 featrue matrix (CSC matrix)
     """
 
     output = []
     for neigh_dict in neigh_dicts: # 각 타입에 대응하는 엣지의 adjacency dictionary에 대하여
-        dst_nodes = [nodes] # 배치를 구성하는 노드의 인덱스를 dst_nodes로 정의한다. 
-        dstsrc2dsts = []
-        dstsrc2srcs = []
-        dif_mats = []
+        # 배치를 구성하는 노드들과 그 이웃 노드들의 인덱스가 담긴 배열을 담을 리스트를 정의한다.
+        # 추후 compute_diffusion_matrix 함수를 이용할 때 해당 리스트를 참조한다. (dst_nodes=[0-th layer, 1-th layer, ...], -1 인덱스로 참조해나감.)
+        dst_nodes = [nodes] 
+        # 배치를 구성하는 노드의 인덱스를 dst_nodes로 정의한다. 
+        dstsrc2dsts = [] # dst_nodes의 특정 레이어에서 배치 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
+        dstsrc2srcs = [] # dst_nodes의 특정 레이어에서 이웃 노드의 위치를 가리키는 인덱스 배열을 담을 리스트를 정의한다.
+        dif_mats = [] # 특정 레이어에서 배치 노드의 mean aggregator의 역할을 하는 adjacency matrix를 담을 리스트를 정의한다.
 
-        # 전체 그래프에서 가장 큰 노드의 인덱스를 max_node_id로 정의한다. >??
+        # 전체 그래프에서 가장 큰 노드의 인덱스를 max_node_id로 정의한다. max_node_id가 dif_mat을 생성하는 과정에서 일시적으로 필요하다.
         max_node_id = max(list(neigh_dict.keys()))
 
-        for sample_size in reversed(sample_sizes):
+        for sample_size in reversed(sample_sizes): # 왜 굳이 거꾸로 루프를 돌리는지 ...
             ds, d2s, d2d, dm = compute_diffusion_matrix(dst_nodes[-1],
                                                         neigh_dict,
                                                         sample_size,
@@ -172,14 +186,17 @@ def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,
             dstsrc2dsts.append(d2d)
             dif_mats.append(dm)
 
+        # dst_nodes은 기존의 노드 피처가 하나 더 담겨 있었으므로 제거하여 수를 맞춘다.
         src_nodes = dst_nodes.pop()
 
         MiniBatchFields = ["src_nodes", "dstsrc2srcs",
                            "dstsrc2dsts", "dif_mats"]
+        
+        # 각 타입의 엣지별 배치의 형태를 namedtuple로 변환하여 output 리스트에 append한다.
         MiniBatch = namedtuple("MiniBatch", MiniBatchFields)
         output.append(MiniBatch(src_nodes, dstsrc2srcs, dstsrc2dsts, dif_mats))
 
-    return output
+    return output   
 
 
 def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
@@ -235,7 +252,7 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
                              for n in dst_nodes])
     # 배치를 구성하는 노드를 기준으로 전체 노드 중 샘플링되지 않는 이웃 노드들에 대한 마스크를 생성한다.
     # nonzero_cols_mask는 전체 노드 중 샘플링되는 이웃 노드만을 가리키는 마스크로 사용된다.
-    nonzero_cols_mask = np.any(adj_mat_full.astype(bool), axis=0)
+    nonzero_cols_mask = np.any(adj_mat_full.astype(bool), axis=0) # Bool array
 
     # compute diffusion matrix
     # 배치 전체에서 참조되지 않는 이웃 노드들을 adj_mat_full에서 제거하여 adj_mat로 정의한다.
@@ -245,17 +262,27 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
     """self-loop을 더해주어야 하는지 코드를 통해 확인해야 함)."""
     _, zero_mask, _ = np.where([adj_mat_sum==0]) # 원래 코드에서 singleton node들은 row sum 값이 0이 되는데
     adj_mat_sum[zero_mask, 0] = 1 # 0으로 나누게 되어 에러 메시지와 런타임 경고가 발생하는데 이를 수정하였다.
+    # dif_mat은 mean aggragator 역할을 하는 행렬을 나타낸다. (B, # of neighborhood in batch)
     dif_mat = np.nan_to_num(adj_mat / adj_mat_sum) 
 
     # compute dstsrc mappings
-    src_nodes = np.arange(nonzero_cols_mask.size)[nonzero_cols_mask]
+    # Aggregation 과정에서 message를 받아올 노드들의 인덱스가 담긴 배열을 src_nodes로 정의한다.
+    src_nodes = np.arange(nonzero_cols_mask.size)[nonzero_cols_mask] # neighbor index array
+    
     # np.union1d automatic sorts the return,
     # which is required for np.searchsorted
-    dstsrc = np.union1d(dst_nodes, src_nodes)
-    dstsrc2src = np.searchsorted(dstsrc, src_nodes)
-    dstsrc2dst = np.searchsorted(dstsrc, dst_nodes)
+    """매핑 인덱스는 dif_mat과 함께 활용하기 위해 만든 것으로 생각됨."""
+    # dst_nodes: 배치를 구성하는 노드의 인덱스가 담긴 배열
+    # src_nodes: 모든 이웃 노드들의 인덱스가 담긴 배열 
+    dstsrc = np.union1d(dst_nodes, src_nodes) # 두 배열의 합집합을 정렬하여 array로 반환한다. ex) [480, 512, 782]
+    dstsrc2src = np.searchsorted(dstsrc, src_nodes) # 정렬된 배열 dstsrc에서 이웃 노드의 인덱스(mapping 인덱스)를 array로 반환한다. ex) [1, 2]
+    dstsrc2dst = np.searchsorted(dstsrc, dst_nodes) # 정렬된 배열 dstsrc에서 배치를 구성하는 노드의 인덱스(mapping 인덱스)를 array로 반환한다. ex) [0]
 
-    return dstsrc, dstsrc2src, dstsrc2dst, dif_mat
+    # dstsrc: 배치를 구성하는 노드들과 그 이웃 노드들의 인덱스가 담긴 배열
+    # dstsrc2src: dstsrc에서 이웃 노드의 위치를 가리키는 인덱스 배열
+    # dstsrc2dst: dstsrc에서 배치 노드의 위치를 가리키는 인덱스 배열
+    # dif_mat: mean aggragator 역할을 하는 행렬 (row-normalized) 
+    return dstsrc, dstsrc2src, dstsrc2dst, dif_mat 
 
 
 if __name__ == "__main__":
