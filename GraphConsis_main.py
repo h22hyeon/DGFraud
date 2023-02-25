@@ -6,6 +6,7 @@ https://github.com/safe-graph/DGFraud-TF2
 """
 import os
 import argparse
+import time
 import numpy as np
 from collections import namedtuple
 from tqdm import tqdm
@@ -16,6 +17,7 @@ import tensorflow as tf
 from algorithms.GraphConsis.GraphConsis import GraphConsis
 from utils.data_loader import load_data_yelp
 from utils.utils import preprocess_feature
+from utils.utils import log, print_config, test_consis
 
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
@@ -23,7 +25,7 @@ parser.add_argument('--seed', type=int, default=717, help='random seed')
 parser.add_argument('--epochs', type=int, default=5,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
-parser.add_argument('--train_size', type=float, default=0.8,
+parser.add_argument('--train_size', type=float, default=0.4,
                     help='training set percentage')
 parser.add_argument('--lr', type=float, default=0.5, help='learning rate')
 parser.add_argument('--nhid', type=int, default=128,
@@ -34,13 +36,14 @@ parser.add_argument('--identity_dim', type=int, default=0,
                     help='dimension of context embedding')
 parser.add_argument('--eps', type=float, default=0.001,
                     help='consistency score threshold ε')
+parser.add_argument('--GPU_id', type=str, default="0",
+                    help='consistency score threshold ε')
 args = parser.parse_args()
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
 # set seed
 np.random.seed(args.seed)
 tf.random.set_seed(args.seed)
-
+os.environ["CUDA_VISIBLE_DEVICES"]=args.GPU_id
 
 def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
     """
@@ -50,6 +53,12 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
     [idx_train, idx_val, idx_test]: train/val/test 노드의 인덱스
     num_classes: Fraud의 종류 (2)
     """
+    ckp = log()
+    config_lines = print_config(vars(args))
+    ckp.write_train_log(config_lines, print_line=False)
+    ckp.write_valid_log(config_lines, print_line=False)
+    ckp.write_test_log(config_lines, print_line=False)
+
     def generate_training_minibatch(nodes_for_training, all_labels,
                                 batch_size, features):
         """
@@ -107,43 +116,36 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
         # iteration을 계산한다.
         iters = int(len(train_nodes) / args.batch_size)
         for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
+            start_time = time.time()
             # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
             with tf.GradientTape() as tape:
                 # 최종적으로 생성된 배치 노드에 대한 fraud score를 predicted로 정의한다.
                 predicted = model(inputs, features)
                 # predicted를 통해 cross-entropy loss를 계산한다.
                 loss = loss_fn(tf.convert_to_tensor(inputs_labels), predicted)
-                """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-                acc = accuracy_score(inputs_labels,
-                                     predicted.numpy().argmax(axis=1))
             # 역전파 과정을 통해 gradient를 계산하고 optimizer를 통해 가중치를 업데이트 한다. 
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            print(f" loss: {loss.numpy():.4f}, acc: {acc:.4f}")
+            end_time = time.time()
+            epoch_time += end_time - start_time
+            print(f'Epoch: {epoch}, loss: {loss.item() / args.batch_size}, time: {epoch_time}s')
 
         # validation!!
-        print("Validating...")
+        print("Valid at epoch {}".format(epoch))
         # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
         val_results = model(build_batch(val_nodes, neigh_dicts,
                                         args.sample_sizes, features), features)
         # val_results를 통해 cross-entropy loss를 계산한다.
-        loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
-        """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-        val_acc = accuracy_score(labels[val_nodes],
-                                 val_results.numpy().argmax(axis=1))
-        print(f" Epoch: {epoch:d}, "
-              f"loss: {loss.numpy():.4f}, "
-              f"acc: {val_acc:.4f}")
+        # loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
+        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_consis(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
 
     # testing!!
-    print("Testing...")
     # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
     results = model(build_batch(test_nodes, neigh_dicts,
                                 args.sample_sizes, features), features)
     """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-    test_acc = accuracy_score(labels[test_nodes],
-                              results.numpy().argmax(axis=1))
-    print(f"Test acc: {test_acc:.4f}")
+    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_consis(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
+
 
 
 def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,
@@ -302,6 +304,8 @@ if __name__ == "__main__":
     # adj_list에는 각 타입의 adj가, split_ids에는 train_x,y/val_x,y/test_x,y가 리스트로 담겨있음.
     adj_list, features, split_ids, y = load_data_yelp(train_size=args.train_size)
     idx_train, _, idx_val, _, idx_test, _ = split_ids # train/val/test 노드의 인덱스를 정의한다.
+
+
 
     num_classes = len(set(y)) # Fraud의 클래스의 수를 계산한다.
     label = np.array([y]).T

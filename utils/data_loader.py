@@ -77,9 +77,7 @@ def load_data_yelp(path: str = 'dataset/YelpChi.mat',
 
     y = truelabels
     index = np.arange(len(y))
-    """
-    Train/val/test 분할 방식은 변경이 필요함.
-    """
+
     X_train, X_test, y_train, y_test = train_test_split(index,
                                                         y,
                                                         stratify=y,
@@ -89,7 +87,7 @@ def load_data_yelp(path: str = 'dataset/YelpChi.mat',
     X_train, X_val, y_train, y_val = train_test_split(X_train,
                                                       y_train,
                                                       stratify=y_train,
-                                                      test_size=0.2,
+                                                      test_size=0.67,
                                                       random_state=48,
                                                       shuffle=True)
 

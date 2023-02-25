@@ -204,6 +204,7 @@ class NodeAttention(layers.Layer):
                  **kwargs: Optional) -> None:
         super().__init__(**kwargs)
 
+        # Node-level attention weight를 H_v로 정의한다.
         self.H_v = tf.Variable(tf.random.normal([input_dim, 1], stddev=0.1))
 
     def call(self, inputs: list, return_weights: bool = False) -> \

@@ -7,7 +7,7 @@ https://github.com/safe-graph/DGFraud-TF2
 
 import argparse
 import numpy as np
-
+from sklearn.metrics import accuracy_score
 import tensorflow as tf
 from tensorflow.keras import optimizers
 

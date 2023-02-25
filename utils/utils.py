@@ -3,10 +3,82 @@ This code is attributed to Yingtong Dou (@YingtongDou) and UIC BDSC Lab
 DGFraud (A Deep Graph-based Toolbox for Fraud Detection  in TensorFlow 2.X)
 https://github.com/safe-graph/DGFraud-TF2
 """
-
+import os
+from datetime import datetime
 from typing import Tuple, Union
 import scipy.sparse as sp
 import numpy as np
+from sklearn.metrics import f1_score, accuracy_score, recall_score, roc_auc_score, average_precision_score
+
+class log:
+	def __init__(self):
+		self.log_dir_path = "./log"
+		self.log_file_name = datetime.now().strftime("%Y-%m-%d %H:%M") + ".log"
+		self.train_log_path = os.path.join(self.log_dir_path, "train", self.log_file_name)
+		self.valid_log_path = os.path.join(self.log_dir_path, "valid", self.log_file_name)
+		self.test_log_path = os.path.join(self.log_dir_path, "test", self.log_file_name)
+		self.multi_run_log_path = os.path.join(self.log_dir_path, "multi-run(total)", self.log_file_name)
+		os.makedirs(os.path.join(self.log_dir_path, "train"), exist_ok=True)
+		os.makedirs(os.path.join(self.log_dir_path, "valid"), exist_ok=True)
+		os.makedirs(os.path.join(self.log_dir_path, "test"), exist_ok=True)
+		os.makedirs(os.path.join(self.log_dir_path, "multiple-run"), exist_ok=True)
+
+	def write_train_log(self, line, print_line=True):
+		if print_line:
+			print(line)
+		log_file = open(self.train_log_path, 'a')
+		log_file.write(line + "\n")
+		log_file.close()
+
+	def write_valid_log(self, line, print_line=True):
+		if print_line:
+			print(line)
+		log_file = open(self.valid_log_path, 'a')
+		log_file.write(line + "\n")
+		log_file.close()
+
+	def write_test_log(self, line, print_line=True):
+		if print_line:
+			print(line)
+		log_file = open(self.test_log_path, 'a')
+		log_file.write(line + "\n")
+		log_file.close()
+	
+	def multi_run_log(self, line, print_line=True):
+		if print_line:
+			print(line)
+		log_file = open(self.multi_run_log_path, 'a')
+		log_file.write(line + "\n")
+		log_file.close()
+
+def print_config(config):
+    print("**************** MODEL CONFIGURATION ****************")
+    # Configuration 파일을 불러와 train setting을 출력한다.
+    config_lines = ""
+    for key in sorted(config.keys()):
+        val = config[key]
+        keystr = "{}".format(key) + (" " * (24 - len(key)))
+        line = "{} -->   {}\n".format(keystr, val)
+        config_lines += line
+        print(line)
+    print("**************** MODEL CONFIGURATION ****************")
+    
+    return config_lines
+
+def test_consis(gnn_prob, labels,  ckp, flag=None):
+    
+    f1_gnn = f1_score(labels, gnn_prob, average="macro")
+    acc_gnn = accuracy_score(labels, gnn_prob)
+    recall_gnn = recall_score(labels, gnn_prob, average="macro")
+    accuracy_score = accuracy_score(labels, gnn_prob, average="macro")
+    line1= f"GNN F1: {f1_gnn:.4f}|\tGNN Accuracy: {acc_gnn:.4f}|"+\
+       f"\tGNN Recall: {recall_gnn:.4f}|\tGNN auc: {accuracy_score:.4f}"
+	
+    if flag=="val":
+        ckp.write_valid_log("Validation: "+ line1)
+    elif flag=="test":
+        ckp.write_test_log("Test: "+ line1)
+    return acc_gnn, recall_gnn, f1_gnn
 
 
 def sparse_to_tuple(sparse_mx: sp.coo_matrix) -> Tuple[np.array, np.array,
@@ -182,6 +254,7 @@ def random_walks(adjlist, numerate, walklength):
         for j in range(1, len(walks[i])):
             pair = [walks[i][0], walks[i][j]]
             pairs.append(pair) # 지정된 pair는 모두 pairs 리스트에 추가된다.
+    # pairs는 리스트이다. (길이는 numerate X # of nodes X (walklength-1))
     return pairs # 한 타입의 adjacency list를 이용해 random walk를 수행하여 생성한 노드 pair 리스트를 반환한다.
 
 
@@ -211,8 +284,8 @@ def get_negative_sampling(pairs, adj_nodelist, Q=3, node_sampling='numpy'):
             while True:
                 if node_sampling == 'numpy':
                     # node_negative_distribution로부터 num_of_nodes만큼 샘플링한다.
-                    negative_node = np.random. \
-                        choice(num_of_nodes, node_negative_distribution)
+                    """p=node_negative_distribution으로 코드 수정"""
+                    negative_node = np.random.choice(num_of_nodes, p=node_negative_distribution)
                     if negative_node not in adj_nodelist[pairs[index][0]]:
                         break
                 elif node_sampling == 'atlas':
@@ -223,9 +296,9 @@ def get_negative_sampling(pairs, adj_nodelist, Q=3, node_sampling='numpy'):
                     negative_node = np.random.randint(0, num_of_nodes)
                     if negative_node not in adj_nodelist[pairs[index][0]]:
                         break
-            u_i.append(pairs[index][0])
-            u_j.append(negative_node)
-            graph_label.append(-1)
+            u_i.append(pairs[index][0]) # 타겟 노드와를 u_u에 삽입한다.
+            u_j.append(negative_node) # 샘플링된 이웃 노드를 u_j에 삽입한다.
+            graph_label.append(-1) # graph_label에 -1을 삽입한다.
     graph_label = np.array(graph_label, dtype=np.int32)
     graph_label = graph_label.reshape(graph_label.shape[0], 1)
     return u_i, u_j, graph_label
