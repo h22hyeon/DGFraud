@@ -36,24 +36,27 @@ class SemiGNN(keras.Model):
         """
         super().__init__()
 
-        self.nodes = nodes
-        self.class_size = class_size
+        self.nodes = nodes # 전체 그래프의 노드 수를 저장한다.
+        self.class_size = class_size # Fraud 클래스의 수를 저장한다.
         self.semi_encoding1 = semi_encoding1
         self.semi_encoding2 = semi_encoding2
         self.semi_encoding3 = semi_encoding3
-        self.init_emb_size = init_emb_size
-        self.view_num = view_num
+        self.init_emb_size = init_emb_size # low-level enbedding의 차원을 저장한다.
+        self.view_num = view_num # Relation(view)의 개수를 저장한다.
         self.alpha = alpha
 
         # init embedding
+        # Low-level embedding을 initialize한다.
         self.x_init = tf.keras.initializers.GlorotUniform()
         self.emb = tf.Variable(
             initial_value=self.x_init(shape=(self.nodes, self.init_emb_size),
-                                      dtype=tf.float32),
-            trainable=True)
+                                      dtype=tf.float32), trainable=True)
 
+        """논문의 Node-level attention 부분이다."""
+        # Node-level attention을 수행하기 위한 레이어를 쌓을 컨테이너를 node_att_layer로 정의한다. 
         self.node_att_layer = []
         for _ in range(view_num):
+            # NodeAttention layer를 veiw_num만큼 쌓는다.
             self.node_att_layer.append(NodeAttention(input_dim=init_emb_size))
 
         # we define a two layer MLP for Eq. (2) in the paper

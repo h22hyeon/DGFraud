@@ -123,20 +123,21 @@ def pad_adjlist(x_data):
     return padded
 
 
-def matrix_to_adjlist(M, pad=True):
-    adjlist = []
-    for i in range(len(M)):
-        adjline = [i]
+def matrix_to_adjlist(M, pad=True): # CSC matrix를 adjacency list 형태로 변환하는 함수이다.
+    adjlist = [] # Adjacency list
+    for i in range(len(M)): # 리스트에서 각 노드의 인덱스에 이웃 노드들을 담을 리스트를 할당한다.
+        adjline = [i] # self-loop이 추가된다.
         for j in range(len(M[i])):
             if M[i][j] == 1:
                 adjline.append(j)
-        adjlist.append(adjline)
+        adjlist.append(adjline) # 한 노드의 이웃 노드를 담고있는 리스트(adjline)를 adjlist에 추가한다.
     if pad:
         adjlist = pad_adjlist(adjlist)
     return adjlist
 
 
 def pairs_to_matrix(pairs, nodes):
+    # 노드 pair를 통해 adjaceny matrix를 구성하는 함수이다 (numpy dense matrix).
     M = np.zeros((nodes, nodes))
     for i, j in pairs:
         M[i][j] = 1
@@ -146,54 +147,70 @@ def pairs_to_matrix(pairs, nodes):
 # Random walk on graph
 def generate_random_walk(adjlist, start, walklength):
     t = 1
+    # walk path를 노드 인덱스를 시작점으로 하여 정의한다.
     walk_path = np.array([start])
-    while t <= walklength:
-        neighbors = adjlist[start]
-        current = np.random.choice(neighbors)
-        walk_path = np.append(walk_path, current)
-        start = current
+    while t <= walklength: # walklength만큼 walk을 수행한다.
+        neighbors = adjlist[start] # 노드의 이웃들 중에서
+        current = np.random.choice(neighbors) # 하나의 노드를 샘플링하여
+        walk_path = np.append(walk_path, current) # walk path에 추가하고
+        start = current # 해당 이웃 노드를 시작점으로 재지정한다.
         t += 1
-    return walk_path
+    return walk_path # 노드에서 walklength만큼 walk하여 샘플링된 이웃 노드의 배열을 반환한다.
 
 
 #  sample multiple times for each node
 def random_walks(adjlist, numerate, walklength):
+    """
+    adjlist: 한 타입의 adjacency list
+    numerate: 반복
+    walklength: 길이
+    """
+    # 한 타입의 adjacency list를 이용해 random walk를 수행하고,
+    # 샘플링된 walklength X numerate 개의 이웃 노드들과 pair를 생성하여 리스트로 구성하는 함수이다.
     nodes = range(0, len(adjlist))  # node index starts from zero
     walks = []
 
+    # 각 노드별로 random walk를 수행하여 
     for n in range(numerate):
         for node in nodes:
+            # 노드의 인덱스와 walklength를 고려하여 
             walks.append(generate_random_walk(adjlist, node, walklength))
+    # walks는 리스트이다. (길이는 numerate X # of nodes)
     pairs = []
     for i in range(len(walks)):
+        # 이웃들에 대한 pair를 순회하며 지정한다.
         for j in range(1, len(walks[i])):
             pair = [walks[i][0], walks[i][j]]
-            pairs.append(pair)
-    return pairs
+            pairs.append(pair) # 지정된 pair는 모두 pairs 리스트에 추가된다.
+    return pairs # 한 타입의 adjacency list를 이용해 random walk를 수행하여 생성한 노드 pair 리스트를 반환한다.
 
 
 def negative_sampling(adj_nodelist):
+    # 노드의 차수을 계산하여 degree로 정의한다.
     degree = [len(neighbors) for neighbors in adj_nodelist]
+    # 각 노드의 차수의 3/4 제곱을 수행하여 negative sampling 하도록 지정한다.
     node_negative_distribution = np.power(np.array(degree, dtype=np.float32),
                                           0.75)
+    # node_negative_distribution를 normalize한다.
     node_negative_distribution /= np.sum(node_negative_distribution)
     node_sampling = AliasSampling(prob=node_negative_distribution)
     return node_negative_distribution, node_sampling
 
 
-def get_negative_sampling(pairs, adj_nodelist, Q=3, node_sampling='atlas'):
-    num_of_nodes = len(adj_nodelist)  # 8
+def get_negative_sampling(pairs, adj_nodelist, Q=3, node_sampling='numpy'):
+    num_of_nodes = len(adj_nodelist)  # 전체 그래프의 노드의 수
     u_i = []
     u_j = []
     graph_label = []
     node_negative_distribution, nodesampling = negative_sampling(adj_nodelist)
-    for index in range(0, num_of_nodes):
-        u_i.append(pairs[index][0])
-        u_j.append(pairs[index][1])
-        graph_label.append(1)
-        for i in range(Q):
+    for index in range(0, num_of_nodes): # 전제 노드에 대해 순회하며
+        u_i.append(pairs[index][0]) # 노드 i
+        u_j.append(pairs[index][1]) # 노드 j
+        graph_label.append(1) # graph_label에 1을 삽입한다.
+        for i in range(Q): # Q만큼 반복하며
             while True:
                 if node_sampling == 'numpy':
+                    # node_negative_distribution로부터 num_of_nodes만큼 샘플링한다.
                     negative_node = np.random. \
                         choice(num_of_nodes, node_negative_distribution)
                     if negative_node not in adj_nodelist[pairs[index][0]]:
@@ -214,23 +231,28 @@ def get_negative_sampling(pairs, adj_nodelist, Q=3, node_sampling='atlas'):
     return u_i, u_j, graph_label
 
 
-# Reference: https://en.wikipedia.org/wiki/Alias_method
+# Reference: https://en.wikipedia.org/wiki/Alias_method:  이산 확률 분포에서 샘플링하기 위한 알고리즘
 class AliasSampling:
 
     def __init__(self, prob):
-        self.n = len(prob)
-        self.U = np.array(prob) * self.n
-        self.K = [i for i in range(len(prob))]
+        """
+        prob: normalized negative distribution을 나타내는 배열 (numpy array).
+        """
+        self.n = len(prob) # 배열의 길이
+        self.U = np.array(prob) * self.n # 이 과정에서 1보다 큰 값과 작은 값으로 나뉘게 됨/
+        self.K = [i for i in range(len(prob))] # 노드의 인덱스를 나타내는 배열을 K로 정의한다.
+        
         overfull, underfull = [], []
-        for i, U_i in enumerate(self.U):
-            if U_i > 1:
+        for i, U_i in enumerate(self.U): # U의 값에 순차적으로 접근하여
+            if U_i > 1: # 값이 1보다 크다면 overfull에
                 overfull.append(i)
-            elif U_i < 1:
+            elif U_i < 1: # 그렇지 않다면 underfull에 노드 인덱스를 할당한다.
                 underfull.append(i)
+
         while len(overfull) and len(underfull):
-            i, j = overfull.pop(), underfull.pop()
-            self.K[j] = i
-            self.U[i] = self.U[i] - (1 - self.U[j])
+            i, j = overfull.pop(), underfull.pop() # 둘 중에서 적은 수의 배열이 빌 때까지
+            self.K[j] = i # 노드의 인덱스
+            self.U[i] = self.U[i] - (1 - self.U[j]) 
             if self.U[i] > 1:
                 overfull.append(i)
             elif self.U[i] < 1:
