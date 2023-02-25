@@ -114,9 +114,10 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
                                                           args.batch_size,
                                                           features)
         # iteration을 계산한다.
+        total_loss = 0.0
+        start_time = time.time()
         iters = int(len(train_nodes) / args.batch_size)
-        for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
-            start_time = time.time()
+        for inputs, inputs_labels in (minibatch_generator):
             # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
             with tf.GradientTape() as tape:
                 # 최종적으로 생성된 배치 노드에 대한 fraud score를 predicted로 정의한다.
@@ -126,9 +127,10 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
             # 역전파 과정을 통해 gradient를 계산하고 optimizer를 통해 가중치를 업데이트 한다. 
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            end_time = time.time()
-            epoch_time += end_time - start_time
-            print(f'Epoch: {epoch}, loss: {loss.item() / args.batch_size}, time: {epoch_time}s')
+            total_loss += loss.item()
+        end_time = time.time()
+        epoch_time += end_time - start_time
+        print(f'Epoch: {epoch}, loss: {total_loss / (iters * args.batch_size)}, time: {epoch_time}s')
 
         # validation!!
         print("Valid at epoch {}".format(epoch))
