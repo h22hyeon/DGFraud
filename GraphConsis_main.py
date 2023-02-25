@@ -17,7 +17,7 @@ import tensorflow as tf
 from algorithms.GraphConsis.GraphConsis import GraphConsis
 from utils.data_loader import load_data_yelp
 from utils.utils import preprocess_feature
-from utils.utils import log, print_config, test_consis
+from utils.utils import log, print_config, test_gnn
 
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
@@ -36,8 +36,7 @@ parser.add_argument('--identity_dim', type=int, default=0,
                     help='dimension of context embedding')
 parser.add_argument('--eps', type=float, default=0.001,
                     help='consistency score threshold ε')
-parser.add_argument('--GPU_id', type=str, default="0",
-                    help='consistency score threshold ε')
+parser.add_argument('--GPU_id', type=str, default="2", help='GPU index')
 args = parser.parse_args()
 
 # set seed
@@ -115,9 +114,10 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
                                                           features)
         # iteration을 계산한다.
         total_loss = 0.0
+        epoch_time = 0
         start_time = time.time()
         iters = int(len(train_nodes) / args.batch_size)
-        for inputs, inputs_labels in (minibatch_generator):
+        for inputs, inputs_labels in  tqdm(minibatch_generator, total=iters):
             # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
             with tf.GradientTape() as tape:
                 # 최종적으로 생성된 배치 노드에 대한 fraud score를 predicted로 정의한다.
@@ -127,10 +127,11 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
             # 역전파 과정을 통해 gradient를 계산하고 optimizer를 통해 가중치를 업데이트 한다. 
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            total_loss += loss.item()
+            total_loss += loss.numpy()
         end_time = time.time()
         epoch_time += end_time - start_time
-        print(f'Epoch: {epoch}, loss: {total_loss / (iters * args.batch_size)}, time: {epoch_time}s')
+        line = f'Epoch: {epoch}, loss: {total_loss / (iters * args.batch_size)}, time: {epoch_time}s'
+        ckp.write_train_log(line)
 
         # validation!!
         print("Valid at epoch {}".format(epoch))
@@ -139,14 +140,14 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
                                         args.sample_sizes, features), features)
         # val_results를 통해 cross-entropy loss를 계산한다.
         # loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
-        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_consis(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
+        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
 
     # testing!!
     # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
     results = model(build_batch(test_nodes, neigh_dicts,
                                 args.sample_sizes, features), features)
     """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_consis(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
+    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
 
 
 

@@ -65,7 +65,7 @@ def print_config(config):
     
     return config_lines
 
-def test_consis(gnn_prob, labels,  ckp, flag=None):
+def test_gnn(gnn_prob, labels,  ckp, flag=None):
     
     f1_gnn = f1_score(labels, gnn_prob, average="macro")
     acc_gnn = accuracy_score(labels, gnn_prob)

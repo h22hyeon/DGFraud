@@ -5,6 +5,7 @@ DGFraud-TF2 (A Deep Graph-based Toolbox for Fraud Detection in TensorFlow 2.X)
 https://github.com/safe-graph/DGFraud-TF2
 """
 import os
+import time
 import argparse
 import numpy as np
 import collections
@@ -16,6 +17,7 @@ import tensorflow as tf
 from algorithms.GraphSage.GraphSage import GraphSage
 from utils.data_loader import load_data_yelp
 from utils.utils import preprocess_feature
+from utils.utils import log, print_config, test_gnn
 
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
@@ -30,13 +32,14 @@ parser.add_argument('--nhid', type=int, default=128,
                     help='number of hidden units')
 parser.add_argument('--sample_sizes', type=list, default=[5, 5],
                     help='number of samples for each layer')
+parser.add_argument('--GPU_id', type=str, default="3", help='GPU index')
+
 args = parser.parse_args()
 
-os.environ["CUDA_VISIBLE_DEVICES"]="2"
 # set seed
 np.random.seed(args.seed)
 tf.random.set_seed(args.seed)
-
+os.environ["CUDA_VISIBLE_DEVICES"]= args.GPU_id
 
 def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
     """
@@ -46,6 +49,11 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
     masks: [idx_train, idx_val, idx_test] = train/val/test 노드의 인덱스
     num_classes: Fraud의 종류 (2)
     """
+    ckp = log()
+    config_lines = print_config(vars(args))
+    ckp.write_train_log(config_lines, print_line=False)
+    ckp.write_valid_log(config_lines, print_line=False)
+    ckp.write_test_log(config_lines, print_line=False)
     
     def generate_training_minibatch(nodes_for_training,
                                     all_labels, batch_size):
@@ -99,6 +107,9 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
             train_nodes, labels, args.batch_size)
         
         # iteration을 게산한다.
+        total_loss = 0.0
+        epoch_time = 0
+        start_time = time.time()
         iters = int(len(train_nodes) / args.batch_size)
         for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
             # 모델에 대한 그래디언트를 계산하고 옵티마이저를 통해 가중치를 계산한다.
@@ -107,13 +118,14 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
                 predicted = model(inputs, features)
                 # predicted를 통해 cross-entropy loss를 계산한다.
                 loss = loss_fn(tf.convert_to_tensor(inputs_labels), predicted)
-                """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-                acc = accuracy_score(inputs_labels,
-                                     predicted.numpy().argmax(axis=1))
             # 역전파 과정을 통해 gradient를 계산하고 optimizer를 통해 가중치를 업데이트 한다.
             grads = tape.gradient(loss, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            print(f" loss: {loss.numpy():.4f}, acc: {acc:.4f}")
+            total_loss += loss.numpy()
+        end_time = time.time()
+        epoch_time += end_time - start_time
+        line = f'Epoch: {epoch}, loss: {total_loss / (iters * args.batch_size)}, time: {epoch_time}s'
+        ckp.write_train_log(line)
 
         # validation!!
         print("Validating...")
@@ -121,13 +133,8 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
         val_results = model(build_batch(
             val_nodes, neigh_dict, args.sample_sizes), features)
         # val_results를 통해 cross-entropy loss를 계산한다.
-        loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
-        """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-        val_acc = accuracy_score(labels[val_nodes],
-                                 val_results.numpy().argmax(axis=1))
-        print(f"Epoch: {epoch:d}, "
-              f"loss: {loss.numpy():.4f}, "
-              f"acc: {val_acc:.4f}")
+        # loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
+        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
 
     # testing!!
     print("Testing...")
@@ -135,9 +142,7 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
     results = model(build_batch(
         test_nodes, neigh_dict, args.sample_sizes), features)
     """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-    test_acc = accuracy_score(labels[test_nodes],
-                              results.numpy().argmax(axis=1))
-    print(f"Test acc: {test_acc:.4f}")
+    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
 
 
 def build_batch(nodes, neigh_dict, sample_sizes):
