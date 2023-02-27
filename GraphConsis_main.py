@@ -22,7 +22,7 @@ from utils.utils import log, print_config, test_gnn
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
-parser.add_argument('--epochs', type=int, default=5,
+parser.add_argument('--epochs', type=int, default=60,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
 parser.add_argument('--train_size', type=float, default=0.4,
@@ -36,6 +36,7 @@ parser.add_argument('--identity_dim', type=int, default=0,
                     help='dimension of context embedding')
 parser.add_argument('--eps', type=float, default=0.001,
                     help='consistency score threshold ε')
+parser.add_argument('--valid_epochs', type=int, default=3, help='Number of valid epochs.')
 parser.add_argument('--GPU_id', type=str, default="2", help='GPU index')
 args = parser.parse_args()
 
@@ -52,14 +53,8 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
     [idx_train, idx_val, idx_test]: train/val/test 노드의 인덱스
     num_classes: Fraud의 종류 (2)
     """
-    ckp = log()
-    config_lines = print_config(vars(args))
-    ckp.write_train_log(config_lines, print_line=False)
-    ckp.write_valid_log(config_lines, print_line=False)
-    ckp.write_test_log(config_lines, print_line=False)
-
-    def generate_training_minibatch(nodes_for_training, all_labels,
-                                batch_size, features):
+    def generate_minibatch(nodes_for_training, all_labels,
+                            batch_size, features):
         """
         nodes_for_training: train set에 대응하는 노드의 인덱스 (numpy array)
         all_labels: 전체 그래프에 대응하는 노드의 label (numpy array)
@@ -86,13 +81,18 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
             labels = all_labels[mini_batch_nodes]
             ix += batch_size
             yield (batch, labels)
-        
-        """남는 배치는 사용하지 않도록 한다."""
-        # mini_batch_nodes = nodes_for_epoch[ix:-1]
-        # batch = build_batch(mini_batch_nodes, neigh_dicts,
-        #                     args.sample_sizes, features)
-        # labels = all_labels[mini_batch_nodes]
-        # yield (batch, labels)
+    
+    """남는 배치는 사용하지 않도록 한다."""
+    # mini_batch_nodes = nodes_for_epoch[ix:-1]
+    # batch = build_batch(mini_batch_nodes, neigh_dicts,
+    #                     args.sample_sizes, features)
+    # labels = all_labels[mini_batch_nodes]
+    # yield (batch, labels)
+    ckp = log()
+    config_lines = print_config(vars(args))
+    ckp.write_train_log(config_lines, print_line=False)
+    ckp.write_valid_log(config_lines, print_line=False)
+    ckp.write_test_log(config_lines, print_line=False)
 
     # train/val/test 노드의 인덱스를 정의한다.
     train_nodes = masks[0]
@@ -108,10 +108,7 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
 
     for epoch in range(args.epochs):
         print(f"Epoch {str(epoch).zfill(2)}: training...")
-        minibatch_generator = generate_training_minibatch(train_nodes,
-                                                          labels,
-                                                          args.batch_size,
-                                                          features)
+        minibatch_generator = generate_minibatch(train_nodes, labels, args.batch_size, features)
         # iteration을 계산한다.
         total_loss = 0.0
         epoch_time = 0
@@ -134,21 +131,21 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
         ckp.write_train_log(line)
 
         # validation!!
-        print("Valid at epoch {}".format(epoch))
-        # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
-        val_results = model(build_batch(val_nodes, neigh_dicts,
-                                        args.sample_sizes, features), features)
-        # val_results를 통해 cross-entropy loss를 계산한다.
-        # loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
-        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
+        if (epoch+1) % args.valid_epochs == 0:
+            print("Valid at epoch {}".format(epoch))
+            # 학습된 모델로부터 validation 과정을 수행한다.
+            iters = int(len(val_nodes) / args.batch_size)
+            minibatch_generator = generate_minibatch(val_nodes, labels, args.batch_size, features)
+            acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(minibatch_generator, model, features, iters, ckp, flag="val")
 
     # testing!!
-    # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
-    results = model(build_batch(test_nodes, neigh_dicts,
-                                args.sample_sizes, features), features)
-    """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
+    print("Test at end of the epoch")
+    # 학습된 모델로부터 test 과정을 수행한다.
+    iters = int(len(val_nodes) / args.batch_size)
+    minibatch_generator = generate_minibatch(test_nodes, labels, args.batch_size, features)
+    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(minibatch_generator, model, features, iters, ckp, flag="test") 
 
+   
 
 
 def build_batch(nodes: list, neigh_dicts: dict, sample_sizes: list,

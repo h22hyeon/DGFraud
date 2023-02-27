@@ -4,6 +4,7 @@ DGFraud (A Deep Graph-based Toolbox for Fraud Detection  in TensorFlow 2.X)
 https://github.com/safe-graph/DGFraud-TF2
 """
 import os
+from tqdm import tqdm
 from datetime import datetime
 from typing import Tuple, Union
 import scipy.sparse as sp
@@ -65,21 +66,32 @@ def print_config(config):
     
     return config_lines
 
-def test_gnn(gnn_prob, labels,  ckp, flag=None):
+def test_gnn(minibatch_generator, model, features, iters, ckp, flag=None):
     
-    f1_gnn = f1_score(labels, gnn_prob, average="macro")
-    acc_gnn = accuracy_score(labels, gnn_prob)
-    recall_gnn = recall_score(labels, gnn_prob, average="macro")
-    accuracy_score = accuracy_score(labels, gnn_prob, average="macro")
-    line1= f"GNN F1: {f1_gnn:.4f}|\tGNN Accuracy: {acc_gnn:.4f}|"+\
-       f"\tGNN Recall: {recall_gnn:.4f}|\tGNN auc: {accuracy_score:.4f}"
+    f1_gnn = 0.0
+    acc_gnn = 0.0
+    recall_gnn = 0.0
+    auc_gnn_list = []
+    label_list = []
+    
+    for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
+        predicted = model(inputs, features)
+        f1_gnn += f1_score(inputs_labels, predicted.numpy().argmax(axis=1), average="macro")
+        acc_gnn += accuracy_score(inputs_labels, predicted.numpy().argmax(axis=1))
+        recall_gnn += recall_score(inputs_labels, predicted.numpy().argmax(axis=1), average="macro")
+        auc_gnn_list.extend(predicted.numpy().argmax(axis=1))
+        label_list.extend(inputs_labels)
+    
+    auc_gnn = roc_auc_score(label_list, np.array(auc_gnn_list))
+    
+    line1= f"GNN F1: {f1_gnn/iters:.4f}|\tGNN AUC-ROC: {auc_gnn/iters:.4f}|"+\
+       f"\tGNN Recall: {recall_gnn/iters:.4f}|\tGNN ACCuracy: {acc_gnn/iters:.4f}\n"
 	
     if flag=="val":
         ckp.write_valid_log("Validation: "+ line1)
     elif flag=="test":
         ckp.write_test_log("Test: "+ line1)
     return acc_gnn, recall_gnn, f1_gnn
-
 
 def sparse_to_tuple(sparse_mx: sp.coo_matrix) -> Tuple[np.array, np.array,
                                                        np.array]:
