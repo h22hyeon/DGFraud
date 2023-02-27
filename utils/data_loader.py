@@ -5,7 +5,8 @@ DGFraud (A Deep Graph-based Toolbox for Fraud Detection in TensorFlow 2.X)
 https://github.com/safe-graph/DGFraud-TF2
 """
 
-
+import os
+import scipy.sparse
 from typing import Tuple
 import numpy as np
 import scipy.io as sio
@@ -46,6 +47,64 @@ def load_data_dblp(path: str =
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train,
                                                       stratify=y_train,
                                                       test_size=0.2,
+                                                      random_state=48,
+                                                      shuffle=True)
+
+    split_ids = [X_train, y_train, X_val, y_val, X_test, y_test]
+
+    return rownetworks, features, split_ids, np.array(y)
+
+def load_data_kdk(path: str = '/data/graphs_v3',
+                   graphs_idx:int = 0, train_size: int = 0.8, meta: bool = True) -> \
+        Tuple[list, np.array, list, np.array]:
+    """
+    The data loader to load the Yelp heterogeneous information network data
+    source: http://odds.cs.stonybrook.edu/yelpchi-dataset
+
+    :param path: the local path of the dataset file
+    :param train_size: the percentage of training data
+    :param meta: if True: it loads a HIN with three meta-graphs,
+                 if False: it loads a homogeneous rur meta-graph
+    """
+    # 000_node_feature(CSC).npz
+    # 000_label.npy
+    postfix = "(CSC).npz"
+    graph_num = str(graphs_idx).zifll(3)
+    feature_path = os.path.join(path, "attributes", graph_num + "_node_features" + postfix)
+    label_path = os.path.join(path, "labels", graph_num + "_label.npy")
+    network_dir_path = os.path.join(path, "G0")
+
+    truelabels = np.load(label_path)
+    features = scipy.sparse.load_npz(feature_path).astype(float)
+    truelabels = truelabels.tolist()[0]
+
+    network_type_list = ["_single_edge_0_network", "_single_edge_1_network","_double_edge_0_network",
+                          "_double_edge_1_network", "_double_edge_2_network","_double_edge_3_network",
+                          "_multi_edge_0_network", "_multi_edge_1_network","_multi_edge_2_network",
+                          "_multi_edge_3_network",]
+    network_path_list = [os.path.join(network_dir_path, graph_num + network_type_list[i] + postfix) for i in range(network_type_list)]
+
+    if not meta:
+        homo_network_path = os.path.join(network_dir_path, graph_num + "_all_edges_network" + postfix)
+        network = scipy.sparse.load_npz(homo_network_path)
+        rownetworks = [network]
+    else:
+        rownetworks = [scipy.sparse.load_npz(network_path_list[i]) for i in range(network_path_list)]
+
+
+    y = truelabels
+    index = np.arange(len(y))
+
+    X_train, X_rest, y_train, y_rest = train_test_split(index,
+                                                        y,
+                                                        stratify=y,
+                                                        test_size=1-train_size,
+                                                        random_state=48,
+                                                        shuffle=True)
+    X_val, X_test, y_val, y_test = train_test_split(X_rest,
+                                                      y_rest,
+                                                      stratify=y_rest,
+                                                      test_size=0.67,
                                                       random_state=48,
                                                       shuffle=True)
 
