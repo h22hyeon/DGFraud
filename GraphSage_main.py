@@ -22,7 +22,7 @@ from utils.utils import log, print_config, test_gnn
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
-parser.add_argument('--epochs', type=int, default=5,
+parser.add_argument('--epochs', type=int, default=60,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
 parser.add_argument('--train_size', type=float, default=0.8,
@@ -32,6 +32,7 @@ parser.add_argument('--nhid', type=int, default=128,
                     help='number of hidden units')
 parser.add_argument('--sample_sizes', type=list, default=[5, 5],
                     help='number of samples for each layer')
+parser.add_argument('--valid_epochs', type=int, default=3, help='Number of valid epochs.')
 parser.add_argument('--GPU_id', type=str, default="3", help='GPU index')
 
 args = parser.parse_args()
@@ -49,14 +50,8 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
     masks: [idx_train, idx_val, idx_test] = train/val/test 노드의 인덱스
     num_classes: Fraud의 종류 (2)
     """
-    ckp = log()
-    config_lines = print_config(vars(args))
-    ckp.write_train_log(config_lines, print_line=False)
-    ckp.write_valid_log(config_lines, print_line=False)
-    ckp.write_test_log(config_lines, print_line=False)
-    
-    def generate_training_minibatch(nodes_for_training,
-                                    all_labels, batch_size):
+    def generate_minibatch(nodes_for_training,
+                                all_labels, batch_size):
         """
         nodes_for_training: train set에 대응하는 노드의 인덱스 (numpy array)
         all_labels: 전체 그래프에 대응하는 노드의 label (numpy array)
@@ -89,6 +84,12 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
         # labels = all_labels[mini_batch_nodes]
         # yield (batch, labels)
 
+    ckp = log()
+    config_lines = print_config(vars(args))
+    ckp.write_train_log(config_lines, print_line=False)
+    ckp.write_valid_log(config_lines, print_line=False)
+    ckp.write_test_log(config_lines, print_line=False)
+
     # train/val/test 노드의 인덱스를 정의한다.
     train_nodes = masks[0]
     val_nodes = masks[1]
@@ -103,7 +104,7 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
 
     for epoch in range(args.epochs):
         print(f"Epoch {str(epoch).zfill(2)}: training...")
-        minibatch_generator = generate_training_minibatch(
+        minibatch_generator = generate_minibatch(
             train_nodes, labels, args.batch_size)
         
         # iteration을 게산한다.
@@ -128,21 +129,21 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
         ckp.write_train_log(line)
 
         # validation!!
-        print("Validating...")
-        # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
-        val_results = model(build_batch(
-            val_nodes, neigh_dict, args.sample_sizes), features)
-        # val_results를 통해 cross-entropy loss를 계산한다.
-        # loss = loss_fn(tf.convert_to_tensor(labels[val_nodes]), val_results)
-        acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(labels[val_nodes], val_results.numpy().argmax(axis=1), ckp, flag="val")
+        # Valid the model for every $valid_epoch$ epoch
+        if (epoch+1) % args.valid_epochs == 0:
+            print("Valid at epoch {}".format(epoch))
+            # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
+            # 학습된 모델로부터 validation 과정을 수행한다.
+            iters = int(len(val_nodes) / args.batch_size)
+            minibatch_generator = generate_minibatch(val_nodes, labels, args.batch_size)
+            acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(minibatch_generator, model, features, iters, ckp, flag="val")
 
     # testing!!
     print("Testing...")
     # 학습된 모델로부터 생성된 fraud score를 val_results로 정의한다.
-    results = model(build_batch(
-        test_nodes, neigh_dict, args.sample_sizes), features)
-    """sklearn으로 accuracy score를 계산하는데, 이를 논문에서 측정한 AUC-ROC와 F1 score로 변환해야 한다."""
-    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(labels[test_nodes], results.numpy().argmax(axis=1), ckp, flag="test")   
+    iters = int(len(val_nodes) / args.batch_size)
+    minibatch_generator = generate_minibatch(test_nodes, labels, args.batch_size)
+    acc_gnn_test, recall_gnn_test, f1_gnn_test = test_gnn(minibatch_generator, model, features, iters, ckp, flag="test") 
 
 
 def build_batch(nodes, neigh_dict, sample_sizes):
