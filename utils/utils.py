@@ -12,9 +12,9 @@ import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, recall_score, roc_auc_score, average_precision_score
 
 class log:
-	def __init__(self):
+	def __init__(self, model_name=None):
 		self.log_dir_path = "./log"
-		self.log_file_name = datetime.now().strftime("%Y-%m-%d %H:%M") + ".log"
+		self.log_file_name = f"({model_name})" + datetime.now().strftime("%Y-%m-%d %H:%M") + ".log"
 		self.train_log_path = os.path.join(self.log_dir_path, "train", self.log_file_name)
 		self.valid_log_path = os.path.join(self.log_dir_path, "valid", self.log_file_name)
 		self.test_log_path = os.path.join(self.log_dir_path, "test", self.log_file_name)

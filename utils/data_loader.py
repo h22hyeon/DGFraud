@@ -55,7 +55,7 @@ def load_data_dblp(path: str =
     return rownetworks, features, split_ids, np.array(y)
 
 def load_data_kdk(path: str = '/data/graphs_v3',
-                   graphs_idx:int = 0, train_size: int = 0.8, meta: bool = True) -> \
+                   graph_idx:int = 0, train_size: float = 0.8, meta: bool = True) -> \
         Tuple[list, np.array, list, np.array]:
     """
     The data loader to load the Yelp heterogeneous information network data
@@ -69,27 +69,28 @@ def load_data_kdk(path: str = '/data/graphs_v3',
     # 000_node_feature(CSC).npz
     # 000_label.npy
     postfix = "(CSC).npz"
-    graph_num = str(graphs_idx).zifll(3)
-    feature_path = os.path.join(path, "attributes", graph_num + "_node_features" + postfix)
+    graph_num = str(graph_idx).zfill(3)
+    feature_path = os.path.join(path, "attributes", graph_num + "_node_feature" + postfix)
     label_path = os.path.join(path, "labels", graph_num + "_label.npy")
     network_dir_path = os.path.join(path, "G0")
 
     truelabels = np.load(label_path)
     features = scipy.sparse.load_npz(feature_path).astype(float)
-    truelabels = truelabels.tolist()[0]
+    truelabels = truelabels.tolist()
 
     network_type_list = ["_single_edge_0_network", "_single_edge_1_network","_double_edge_0_network",
                           "_double_edge_1_network", "_double_edge_2_network","_double_edge_3_network",
                           "_multi_edge_0_network", "_multi_edge_1_network","_multi_edge_2_network",
                           "_multi_edge_3_network",]
-    network_path_list = [os.path.join(network_dir_path, graph_num + network_type_list[i] + postfix) for i in range(network_type_list)]
+    
+    network_path_list = [os.path.join(network_dir_path, graph_num + network_type_list[i] + postfix) for i in range(len(network_type_list))]
 
     if not meta:
         homo_network_path = os.path.join(network_dir_path, graph_num + "_all_edges_network" + postfix)
         network = scipy.sparse.load_npz(homo_network_path)
         rownetworks = [network]
     else:
-        rownetworks = [scipy.sparse.load_npz(network_path_list[i]) for i in range(network_path_list)]
+        rownetworks = [scipy.sparse.load_npz(network_path_list[i]) for i in range(len(network_path_list))]
 
 
     y = truelabels
@@ -114,7 +115,7 @@ def load_data_kdk(path: str = '/data/graphs_v3',
 
 
 def load_data_yelp(path: str = 'dataset/YelpChi.mat',
-                   train_size: int = 0.8, meta: bool = True) -> \
+                   train_size: float = 0.8, meta: bool = True) -> \
         Tuple[list, np.array, list, np.array]:
     """
     The data loader to load the Yelp heterogeneous information network data

@@ -15,13 +15,15 @@ from sklearn.metrics import accuracy_score
 import tensorflow as tf
 
 from algorithms.GraphConsis.GraphConsis import GraphConsis
-from utils.data_loader import load_data_yelp
+from utils.data_loader import load_data_yelp, load_data_kdk
 from utils.utils import preprocess_feature
 from utils.utils import log, print_config, test_gnn
 
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
+parser.add_argument('--model_name', type=str, default="GraphConsis", help='Model name')
+parser.add_argument('--data_name', type=str, default="YelpChi", help='Dataset name')
 parser.add_argument('--epochs', type=int, default=120,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
@@ -38,6 +40,8 @@ parser.add_argument('--eps', type=float, default=0.001,
                     help='consistency score threshold ε')
 parser.add_argument('--valid_epochs', type=int, default=3, help='Number of valid epochs.')
 parser.add_argument('--GPU_id', type=str, default="2", help='GPU index')
+parser.add_argument('--graph_id', type=int, default=0, help='Graph index')
+
 args = parser.parse_args()
 
 # set seed
@@ -88,7 +92,7 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
         #                     args.sample_sizes, features)
         # labels = all_labels[mini_batch_nodes]
         # yield (batch, labels)
-    ckp = log()
+    ckp = log(args.model_name)
     config_lines = print_config(vars(args))
     ckp.write_train_log(config_lines, print_line=False)
     ckp.write_valid_log(config_lines, print_line=False)
@@ -301,10 +305,13 @@ def compute_diffusion_matrix(dst_nodes, neigh_dict, sample_size,
 
 if __name__ == "__main__":
     # load the data
-    # adj_list에는 각 타입의 adj가, split_ids에는 train_x,y/val_x,y/test_x,y가 리스트로 담겨있음.
-    adj_list, features, split_ids, y = load_data_yelp(train_size=args.train_size)
-    idx_train, _, idx_val, _, idx_test, _ = split_ids # train/val/test 노드의 인덱스를 정의한다.
-
+    if args.data_name == "YelpChi":
+        adj_list, features, split_ids, y = load_data_yelp(meta=True, train_size=args.train_size)
+        idx_train, _, idx_val, _, idx_test, _ = split_ids
+    
+    elif args.data_name == "KDK":
+        adj_list, features, split_ids, y = load_data_kdk(graph_id=args.graph_id, meta=True, train_size=args.train_size)
+        idx_train, _, idx_val, _, idx_test, _ = split_ids
 
 
     num_classes = len(set(y)) # Fraud의 클래스의 수를 계산한다.

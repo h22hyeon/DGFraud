@@ -15,13 +15,15 @@ from tqdm import tqdm
 import tensorflow as tf
 
 from algorithms.GraphSage.GraphSage import GraphSage
-from utils.data_loader import load_data_yelp
+from utils.data_loader import load_data_yelp, load_data_kdk
 from utils.utils import preprocess_feature
 from utils.utils import log, print_config, test_gnn
 
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
+parser.add_argument('--model_name', type=str, default="GraphSage", help='Model name')
+parser.add_argument('--data_name', type=str, default="YelpChi", help='Dataset')
 parser.add_argument('--epochs', type=int, default=120,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
@@ -33,7 +35,8 @@ parser.add_argument('--nhid', type=int, default=128,
 parser.add_argument('--sample_sizes', type=list, default=[5, 5],
                     help='number of samples for each layer')
 parser.add_argument('--valid_epochs', type=int, default=3, help='Number of valid epochs.')
-parser.add_argument('--GPU_id', type=str, default="3", help='GPU index')
+parser.add_argument('--GPU_id', type=str, default="0", help='GPU index')
+parser.add_argument('--graph_id', type=int, default=0, help='Graph index')
 
 args = parser.parse_args()
 
@@ -84,7 +87,7 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
         # labels = all_labels[mini_batch_nodes]
         # yield (batch, labels)
 
-    ckp = log()
+    ckp = log(args.model_name)
     config_lines = print_config(vars(args))
     ckp.write_train_log(config_lines, print_line=False)
     ckp.write_valid_log(config_lines, print_line=False)
@@ -270,10 +273,13 @@ if __name__ == "__main__":
     """
     GraphSage는 homogeneous graph를 다루기 때문에 relation을 통합한 homo 버전으로 불러와야 한다.
     """
-    adj_list, features, split_ids, y = load_data_yelp(
-        meta=False, train_size=args.train_size)
-    # split_ids를 통해 train/val/test 노드의 인덱스를 정의한다.
-    idx_train, _, idx_val, _, idx_test, _ = split_ids
+    if args.data_name == "YelpChi":
+        adj_list, features, split_ids, y = load_data_yelp(meta=False, train_size=args.train_size)
+        idx_train, _, idx_val, _, idx_test, _ = split_ids
+    
+    elif args.data_name == "KDK":
+        adj_list, features, split_ids, y = load_data_kdk(graph_id=args.graph_id, meta=False, train_size=args.train_size)
+        idx_train, _, idx_val, _, idx_test, _ = split_ids
 
     # Fraud의 클래스 수를 계산한다.
     num_classes = len(set(y))
