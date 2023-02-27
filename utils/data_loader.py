@@ -78,15 +78,15 @@ def load_data_yelp(path: str = 'dataset/YelpChi.mat',
     y = truelabels
     index = np.arange(len(y))
 
-    X_train, X_test, y_train, y_test = train_test_split(index,
+    X_train, X_rest, y_train, y_rest = train_test_split(index,
                                                         y,
                                                         stratify=y,
                                                         test_size=1-train_size,
                                                         random_state=48,
                                                         shuffle=True)
-    X_train, X_val, y_train, y_val = train_test_split(X_train,
-                                                      y_train,
-                                                      stratify=y_train,
+    X_val, X_test, y_val, y_test = train_test_split(X_rest,
+                                                      y_rest,
+                                                      stratify=y_rest,
                                                       test_size=0.67,
                                                       random_state=48,
                                                       shuffle=True)
