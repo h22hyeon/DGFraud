@@ -84,8 +84,8 @@ def test_gnn(minibatch_generator, model, features, iters, ckp, flag=None):
     
     auc_gnn = roc_auc_score(label_list, np.array(auc_gnn_list))
     
-    line1= f"GNN F1: {f1_gnn/iters:.4f}|\tGNN AUC-ROC: {auc_gnn/iters:.4f}|"+\
-       f"\tGNN Recall: {recall_gnn/iters:.4f}|\tGNN ACCuracy: {acc_gnn/iters:.4f}\n"
+    line1= f"GNN F1: {f1_gnn/iters:.4f}\tGNN AUC-ROC: {auc_gnn/iters:.4f}"+\
+       f"\tGNN Recall: {recall_gnn/iters:.4f}\tGNN ACCuracy: {acc_gnn/iters:.4f}\n"
 	
     if flag=="val":
         ckp.write_valid_log("Validation: "+ line1)

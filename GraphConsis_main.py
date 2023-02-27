@@ -22,7 +22,7 @@ from utils.utils import log, print_config, test_gnn
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
-parser.add_argument('--epochs', type=int, default=60,
+parser.add_argument('--epochs', type=int, default=120,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
 parser.add_argument('--train_size', type=float, default=0.4,
@@ -82,12 +82,12 @@ def GraphConsis_main(neigh_dicts, features, labels, masks, num_classes, args):
             ix += batch_size
             yield (batch, labels)
     
-    """남는 배치는 사용하지 않도록 한다."""
-    # mini_batch_nodes = nodes_for_epoch[ix:-1]
-    # batch = build_batch(mini_batch_nodes, neigh_dicts,
-    #                     args.sample_sizes, features)
-    # labels = all_labels[mini_batch_nodes]
-    # yield (batch, labels)
+        """남는 배치는 사용하지 않도록 한다."""
+        # mini_batch_nodes = nodes_for_epoch[ix:-1]
+        # batch = build_batch(mini_batch_nodes, neigh_dicts,
+        #                     args.sample_sizes, features)
+        # labels = all_labels[mini_batch_nodes]
+        # yield (batch, labels)
     ckp = log()
     config_lines = print_config(vars(args))
     ckp.write_train_log(config_lines, print_line=False)

@@ -22,10 +22,10 @@ from utils.utils import log, print_config, test_gnn
 # init the common args, expect the model specific args
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
-parser.add_argument('--epochs', type=int, default=60,
+parser.add_argument('--epochs', type=int, default=120,
                     help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
-parser.add_argument('--train_size', type=float, default=0.8,
+parser.add_argument('--train_size', type=float, default=0.4,
                     help='training set percentage')
 parser.add_argument('--lr', type=float, default=0.5, help='learning rate')
 parser.add_argument('--nhid', type=int, default=128,
