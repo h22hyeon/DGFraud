@@ -24,16 +24,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=717, help='random seed')
 parser.add_argument('--model_name', type=str, default="GraphSage", help='Model name')
 parser.add_argument('--data_name', type=str, default="YelpChi", help='Dataset')
-parser.add_argument('--epochs', type=int, default=120,
-                    help='number of epochs to train')
+parser.add_argument('--epochs', type=int, default=120, help='number of epochs to train')
 parser.add_argument('--batch_size', type=int, default=512, help='batch size')
-parser.add_argument('--train_size', type=float, default=0.4,
-                    help='training set percentage')
+parser.add_argument('--train_size', type=float, default=0.4, help='training set percentage')
 parser.add_argument('--lr', type=float, default=0.5, help='learning rate')
-parser.add_argument('--nhid', type=int, default=128,
-                    help='number of hidden units')
-parser.add_argument('--sample_sizes', type=list, default=[5, 5],
-                    help='number of samples for each layer')
+parser.add_argument('--nhid', type=int, default=128, help='number of hidden units')
+parser.add_argument('--sample_sizes', type=int, default=[], action="append", help='number of samples for each layer')
 parser.add_argument('--valid_epochs', type=int, default=3, help='Number of valid epochs.')
 parser.add_argument('--GPU_id', type=str, default="0", help='GPU index')
 parser.add_argument('--graph_id', type=int, default=0, help='Graph index')
@@ -92,6 +88,7 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
     ckp.write_train_log(config_lines, print_line=False)
     ckp.write_valid_log(config_lines, print_line=False)
     ckp.write_test_log(config_lines, print_line=False)
+    path_saver = os.path.join(ckp.save_dir_path, '{}_{}.pkl'.format(args.data_name, args.model_name))
 
     # train/val/test 노드의 인덱스를 정의한다.
     train_nodes = masks[0]
@@ -104,7 +101,8 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
                       len(args.sample_sizes), num_classes)
     optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr)
     loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
-
+    
+    auc_best = 0.0
     for epoch in range(args.epochs):
         print(f"Epoch {str(epoch).zfill(2)}: training...")
         minibatch_generator = generate_minibatch(
@@ -140,6 +138,10 @@ def GraphSage_main(neigh_dict, features, labels, masks, num_classes, args):
             iters = int(len(val_nodes) / args.batch_size)
             minibatch_generator = generate_minibatch(val_nodes, labels, args.batch_size)
             acc_gnn_val, recall_gnn_val, f1_gnn_val = test_gnn(minibatch_generator, model, features, iters, ckp, flag="val")
+            if acc_gnn_val > auc_best:
+                auc_best, ep_best = acc_gnn_val, epoch
+                print('  Saving model ...')
+                # torch.save(gnn_model.state_dict(), path_saver)
 
     # testing!!
     print("Testing...")

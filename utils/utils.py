@@ -13,12 +13,15 @@ from sklearn.metrics import f1_score, accuracy_score, recall_score, roc_auc_scor
 
 class log:
 	def __init__(self, model_name=None):
+		self.time_step = str(datetime.now())
+		self.save_dir_path = f"/data/Save_model({model_name})"
 		self.log_dir_path = "./log"
-		self.log_file_name = f"({model_name})" + datetime.now().strftime("%Y-%m-%d %H:%M") + ".log"
+		self.log_file_name = f"({model_name})" + self.time_step + ".log"
 		self.train_log_path = os.path.join(self.log_dir_path, "train", self.log_file_name)
 		self.valid_log_path = os.path.join(self.log_dir_path, "valid", self.log_file_name)
 		self.test_log_path = os.path.join(self.log_dir_path, "test", self.log_file_name)
 		self.multi_run_log_path = os.path.join(self.log_dir_path, "multi-run(total)", self.log_file_name)
+		os.makedirs(self.save_dir_path, exist_ok=True)
 		os.makedirs(os.path.join(self.log_dir_path, "train"), exist_ok=True)
 		os.makedirs(os.path.join(self.log_dir_path, "valid"), exist_ok=True)
 		os.makedirs(os.path.join(self.log_dir_path, "test"), exist_ok=True)
@@ -76,15 +79,16 @@ def test_gnn(minibatch_generator, model, features, iters, ckp, flag=None):
     
     for inputs, inputs_labels in tqdm(minibatch_generator, total=iters):
         predicted = model(inputs, features)
-        f1_gnn += f1_score(inputs_labels, predicted.numpy().argmax(axis=1), average="macro")
-        acc_gnn += accuracy_score(inputs_labels, predicted.numpy().argmax(axis=1))
-        recall_gnn += recall_score(inputs_labels, predicted.numpy().argmax(axis=1), average="macro")
-        auc_gnn_list.extend(predicted.numpy().argmax(axis=1))
-        label_list.extend(inputs_labels)
+
+        f1_gnn += f1_score(inputs_labels, predicted.numpy().argmax(axis=1).reshape(-1), average="macro")
+        acc_gnn += accuracy_score(inputs_labels, predicted.numpy().argmax(axis=1).reshape(-1))
+        recall_gnn += recall_score(inputs_labels, predicted.numpy().argmax(axis=1).reshape(-1), average="macro")
+        auc_gnn_list.extend(predicted.cpu().numpy()[:, 1].reshape(-1))
+        label_list.extend(inputs_labels.reshape(-1))
     
-    auc_gnn = roc_auc_score(label_list, np.array(auc_gnn_list))
+    auc_gnn = roc_auc_score(np.array(label_list), np.array(auc_gnn_list))
     
-    line1= f"GNN F1: {f1_gnn/iters:.4f}\tGNN AUC-ROC: {auc_gnn/iters:.4f}"+\
+    line1= f"GNN F1: {f1_gnn/iters:.4f}\tGNN AUC-ROC: {auc_gnn:.4f}"+\
        f"\tGNN Recall: {recall_gnn/iters:.4f}\tGNN ACCuracy: {acc_gnn/iters:.4f}\n"
 	
     if flag=="val":
