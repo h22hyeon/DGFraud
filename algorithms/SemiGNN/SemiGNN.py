@@ -80,6 +80,12 @@ class SemiGNN(keras.Model):
         :param inputs: the information passed to next layers
         :param training: whether in the training mode
         """
+        """
+        adj_data: random walk로 구성한 타겟 노드와 이웃 노드의 pair로 생성된 adjacency matrix
+        u_i: 
+        u_j: 
+        graph_label: 
+        """
         adj_data, u_i, u_j, graph_label, label, idx_mask = inputs
 
         # node level attention

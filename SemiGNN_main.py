@@ -72,10 +72,13 @@ def SemiGNN_main(adj_list: list,
     
     # 각 타입의 엣지를 통해 random walk를 수행하여 negative sample에 사용할 노드를 샘플링한다. 
     # pairs는 타입별 타겟 노드와 이웃 노드의 pair를 의미하는 리스트[a,b]로 구성된 리스트이다.
+    """pairs는 Relation별로 random walk로 구성한 타겟 노드와 이웃 노드의 pair이다."""
+    # pairs는 리스트이며, 길이는 (numerate X # of nodes X (walklength-1))이다. 
     pairs = [random_walks(adj_nodelists[i], 2, 3)
              for i in range(args.view_num)]
     
     # 노드 pair를 통해 adjaceny matrix를 구성한다 (numpy dense matrix).
+    """adj_data는 random walk로 구성한 타겟 노드와 이웃 노드의 pair로 생성된 adjacency matrix이다."""
     adj_data = [pairs_to_matrix(p, args.nodes) for p in pairs]
     u_i = []
     u_j = []
@@ -85,12 +88,16 @@ def SemiGNN_main(adj_list: list,
         # u_i_t: [i, i, i, i]
         # u_j_t: [j, a, b, c]
         # graph_label_t: [1, -1, -1, -1]
+        # -> length = (# of nodes) X (positive (1) + negative (3)) 
         u_i_t, u_j_t, graph_label_t = get_negative_sampling(p, adj_nodelist)
         u_i.append(u_i_t)
         u_j.append(u_j_t)
         graph_label.append(graph_label_t)
+    
+    # u_i, u_j의 shape을 (# of relation, length) concatenate한다. 
     u_i = np.concatenate(np.array(u_i))
     u_j = np.concatenate(np.array(u_j))
+    # graph_label의 shape을 (# of relation, length) concatenate하고, tensor로 변환한다.
     graph_label = tf.convert_to_tensor(np.concatenate(graph_label),
                                        dtype=tf.float32)
 

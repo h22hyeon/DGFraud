@@ -11,7 +11,7 @@ import numpy as np
 import collections
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
-
+ 
 import tensorflow as tf
 
 from algorithms.GraphSage.GraphSage import GraphSage
